@@ -1,0 +1,10 @@
+node_modules/
+auto/node_modules/
+.expo/
+auto/.expo/
+dist/
+.vite/
+.DS_Store
+*.log
+*.tsbuildinfo
+*.mbtiles

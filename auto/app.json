@@ -1,0 +1,20 @@
+{
+  "expo": {
+    "name": "ParkUB",
+    "slug": "parkub",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#F5F7FA"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "mn.parkub.app"
+    },
+    "android": {
+      "edgeToEdgeEnabled": true,
+      "package": "mn.parkub.app"
+    }
+  }
+}
