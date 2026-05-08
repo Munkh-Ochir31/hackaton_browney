@@ -1,55 +1,94 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { getSlots, createReservation, PARKING_DATA } from '../../../services/api';
+import { fetchParkingById } from '../../../services/parkingMock';
+import { getSlots, createReservation } from '../../../services/reservationMock';
 import { theme } from '../../../lib/theme';
 
 export default function ReservationScreen() {
   const params = useParams();
   const router = useRouter();
   const id = params.id;
-  
+
   const [parking, setParking] = useState(null);
   const [slots, setSlots] = useState([]);
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [loading, setLoading] = useState(true);
   const [reserving, setReserving] = useState(false);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    const spot = PARKING_DATA.find(p => p.id === id);
-    if (spot) {
-      setParking(spot);
-    }
-    
-    getSlots(id).then(data => {
-      setSlots(data);
-      setLoading(false);
-    });
+    Promise.all([fetchParkingById(id), getSlots(id)])
+      .then(([spot, slotData]) => {
+        setParking(spot);
+        setSlots(slotData);
+      })
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
   }, [id]);
 
   const handleReserve = async () => {
     if (!selectedSlot || !parking) return;
     setReserving(true);
-    
+    setError(null);
+
     const price = parking.priceMNT;
-    const res = await createReservation({ parkingId: id, slotId: selectedSlot.id, price });
-    
+    const res = await createReservation({
+      parkingId: id,
+      slotId: selectedSlot.id,
+      slot: selectedSlot,
+      price,
+    });
+
     if (res.success) {
       const reservationData = {
         parkingName: parking.name,
         timeLabel: selectedSlot.label,
         totalPrice: price,
         reservationId: res.reservationId,
+        reservationCode: res.reservationCode,
+        qrCode: res.qrCode,
       };
       sessionStorage.setItem('reservationData', JSON.stringify(reservationData));
       router.push('/payment');
     } else {
       setReserving(false);
-      alert('Захиалга үүсгэхэд алдаа гарлаа.');
+      if (res.requiresAuth) {
+        setError('Эхлээд нэвтэрнэ үү');
+        setTimeout(() => router.push('/login'), 1500);
+      } else {
+        setError(res.message || 'Захиалга үүсгэхэд алдаа гарлаа');
+      }
     }
   };
 
-  if (!parking) return null;
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', padding: theme.spacing.xl, minHeight: '100vh' }}>
+        <div style={{
+          width: '32px', height: '32px',
+          border: `3px solid ${theme.colors.surface}`,
+          borderTopColor: theme.colors.accent,
+          borderRadius: '50%',
+          animation: 'spin 1s linear infinite',
+        }}></div>
+      </div>
+    );
+  }
+
+  if (!parking) {
+    return (
+      <div style={{ padding: theme.spacing.lg, textAlign: 'center' }}>
+        <p style={{ color: theme.colors.textMuted }}>Зогсоол олдсонгүй</p>
+        <button
+          onClick={() => router.push('/parking')}
+          style={{ marginTop: theme.spacing.md, color: theme.colors.accent }}
+        >
+          Буцах
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div style={{ padding: theme.spacing.md, minHeight: '100vh', display: 'flex', flexDirection: 'column', paddingBottom: '80px' }}>
@@ -67,54 +106,61 @@ export default function ReservationScreen() {
         backgroundColor: theme.colors.surface,
         borderRadius: theme.borderRadius.md,
         padding: theme.spacing.md,
-        marginBottom: theme.spacing.xl
+        marginBottom: theme.spacing.xl,
       }}>
-        <p style={{ color: theme.colors.textMuted, fontSize: theme.fontSize.sm, marginBottom: theme.spacing.xs }}>{parking.address}</p>
-        <div style={{ fontSize: theme.fontSize.lg, fontWeight: 'bold', color: theme.colors.accent }}>
-          ₮{parking.priceMNT.toLocaleString()}/цаг
+        <p style={{ color: theme.colors.textMuted, fontSize: theme.fontSize.sm, marginBottom: theme.spacing.xs }}>
+          {parking.address}
+        </p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ fontSize: theme.fontSize.lg, fontWeight: 'bold', color: theme.colors.accent }}>
+            ₮{(parking.priceMNT || 0).toLocaleString()}/цаг
+          </div>
+          <div style={{ fontSize: theme.fontSize.sm, color: theme.colors.textMuted }}>
+            {parking.availableSlots}/{parking.totalSlots} сул
+          </div>
         </div>
       </div>
 
       <h2 style={{ fontSize: theme.fontSize.md, fontWeight: 'bold', marginBottom: theme.spacing.md }}>Цаг сонгох</h2>
-      
-      {loading ? (
-        <div style={{ display: 'flex', justifyContent: 'center', padding: theme.spacing.xl }}>
-          <div style={{
-            width: '32px',
-            height: '32px',
-            border: `3px solid ${theme.colors.surface}`,
-            borderTopColor: theme.colors.accent,
-            borderRadius: '50%',
-            animation: 'spin 1s linear infinite'
-          }}></div>
-        </div>
-      ) : (
+
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: '1fr 1fr',
+        gap: theme.spacing.md,
+        marginBottom: 'auto',
+      }}>
+        {slots.map(slot => (
+          <button
+            key={slot.id}
+            disabled={!slot.available}
+            onClick={() => setSelectedSlot(slot)}
+            style={{
+              backgroundColor: selectedSlot?.id === slot.id ? 'rgba(0, 230, 118, 0.1)' : theme.colors.surface,
+              border: `1px solid ${selectedSlot?.id === slot.id ? theme.colors.accent : 'transparent'}`,
+              borderRadius: theme.borderRadius.md,
+              padding: '16px 8px',
+              color: slot.available ? theme.colors.text : theme.colors.textMuted,
+              opacity: slot.available ? 1 : 0.5,
+              fontWeight: selectedSlot?.id === slot.id ? 'bold' : 'normal',
+              cursor: slot.available ? 'pointer' : 'not-allowed',
+              transition: 'all 0.2s ease',
+            }}
+          >
+            {slot.label}
+          </button>
+        ))}
+      </div>
+
+      {error && (
         <div style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gap: theme.spacing.md,
-          marginBottom: 'auto'
+          marginTop: theme.spacing.md,
+          padding: theme.spacing.sm,
+          backgroundColor: 'rgba(239,68,68,0.2)',
+          color: theme.colors.error,
+          borderRadius: theme.borderRadius.sm,
+          fontSize: theme.fontSize.sm,
         }}>
-          {slots.map(slot => (
-            <button
-              key={slot.id}
-              disabled={!slot.available}
-              onClick={() => setSelectedSlot(slot)}
-              style={{
-                backgroundColor: selectedSlot?.id === slot.id ? 'rgba(0, 230, 118, 0.1)' : theme.colors.surface,
-                border: `1px solid ${selectedSlot?.id === slot.id ? theme.colors.accent : 'transparent'}`,
-                borderRadius: theme.borderRadius.md,
-                padding: '16px 8px',
-                color: slot.available ? theme.colors.text : theme.colors.textMuted,
-                opacity: slot.available ? 1 : 0.5,
-                fontWeight: selectedSlot?.id === slot.id ? 'bold' : 'normal',
-                cursor: slot.available ? 'pointer' : 'not-allowed',
-                transition: 'all 0.2s ease',
-              }}
-            >
-              {slot.label}
-            </button>
-          ))}
+          {error}
         </div>
       )}
 
@@ -131,10 +177,10 @@ export default function ReservationScreen() {
           }}>
             <span style={{ color: theme.colors.textMuted }}>{selectedSlot.label}</span>
             <span style={{ fontWeight: 'bold', fontSize: theme.fontSize.lg, color: theme.colors.accent }}>
-              ₮{parking.priceMNT.toLocaleString()}
+              ₮{(parking.priceMNT || 0).toLocaleString()}
             </span>
           </div>
-          
+
           <button
             onClick={handleReserve}
             disabled={reserving}
@@ -153,15 +199,14 @@ export default function ReservationScreen() {
             }}
           >
             {reserving ? (
-               <div style={{
-                width: '20px',
-                height: '20px',
+              <div style={{
+                width: '20px', height: '20px',
                 border: `2px solid rgba(255,255,255,0.3)`,
                 borderTopColor: '#fff',
                 borderRadius: '50%',
-                animation: 'spin 1s linear infinite'
+                animation: 'spin 1s linear infinite',
               }}></div>
-            ) : 'Захиалах үргэлжлүүлэх'}
+            ) : 'Захиалга үргэлжлүүлэх'}
           </button>
         </div>
       )}

@@ -1,16 +1,22 @@
 'use client';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useVoice } from '../hooks/useVoice';
 import { theme } from '../lib/theme';
 
-export default function VoiceButton({ onTranscript, style = {} }) {
-  const { transcript, isListening, startListening, stopListening, supported } = useVoice();
+export default function VoiceButton({ onTranscript, onError, style = {} }) {
+  const { transcript, isListening, startListening, stopListening, supported, error } = useVoice();
+  const lastFiredRef = useRef('');
 
   useEffect(() => {
-    if (transcript && onTranscript) {
-      onTranscript(transcript);
+    if (transcript && transcript !== lastFiredRef.current) {
+      lastFiredRef.current = transcript;
+      if (onTranscript) onTranscript(transcript);
     }
   }, [transcript, onTranscript]);
+
+  useEffect(() => {
+    if (error && onError) onError(error);
+  }, [error, onError]);
 
   if (!supported) return null;
 

@@ -1,27 +1,76 @@
+import api from './apiClient';
+
 export const getSlots = async (parkingId) => {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve([
-        { id: 's1', time: '10:00 - 11:00', label: '10:00 - 11:00', available: false },
-        { id: 's2', time: '11:00 - 12:00', label: '11:00 - 12:00', available: true },
-        { id: 's3', time: '12:00 - 13:00', label: '12:00 - 13:00', available: true },
-        { id: 's4', time: '13:00 - 14:00', label: '13:00 - 14:00', available: false },
-        { id: 's5', time: '14:00 - 15:00', label: '14:00 - 15:00', available: true },
-        { id: 's6', time: '15:00 - 16:00', label: '15:00 - 16:00', available: true },
-      ]);
-    }, 600);
-  });
+  const slots = [];
+  const now = new Date();
+  const start = new Date(now);
+  start.setMinutes(0, 0, 0);
+  start.setHours(start.getHours() + 1);
+
+  for (let i = 0; i < 6; i++) {
+    const slotStart = new Date(start.getTime() + i * 60 * 60 * 1000);
+    const slotEnd = new Date(slotStart.getTime() + 60 * 60 * 1000);
+    const label = `${pad(slotStart.getHours())}:00 - ${pad(slotEnd.getHours())}:00`;
+    slots.push({
+      id: `s${i + 1}`,
+      time: label,
+      label,
+      startTime: slotStart.toISOString(),
+      endTime: slotEnd.toISOString(),
+      available: true,
+    });
+  }
+  return slots;
 };
 
-export const createReservation = async ({ parkingId, slotId, price }) => {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve({
-        success: true,
-        reservationId: `RES-${Math.floor(Math.random() * 100000)}`,
-        confirmedAt: new Date().toISOString(),
-        total: price,
-      });
-    }, 600);
-  });
+const pad = (n) => String(n).padStart(2, '0');
+
+export const createReservation = async ({ parkingId, slotId, price, slot, vehiclePlate = 'УБА1234' }) => {
+  try {
+    const startTime = slot?.startTime || new Date().toISOString();
+    const endTime = slot?.endTime || new Date(Date.now() + 60 * 60 * 1000).toISOString();
+
+    const res = await api.createReservation({
+      parkingId,
+      vehiclePlate,
+      startTime,
+      endTime,
+    });
+
+    const r = res.data?.reservation || res.data;
+    return {
+      success: true,
+      reservationId: r._id,
+      reservationCode: r.reservationCode,
+      qrCode: r.qrCode,
+      total: r.totalAmount,
+      confirmedAt: r.createdAt,
+    };
+  } catch (err) {
+    if (err.status === 401) {
+      return { success: false, message: 'Нэвтрэх шаардлагатай', requiresAuth: true };
+    }
+    return {
+      success: false,
+      message: err.message || 'Захиалга үүсгэж чадсангүй',
+    };
+  }
+};
+
+export const cancelReservation = async (id) => {
+  try {
+    await api.cancelReservation(id);
+    return { success: true };
+  } catch (err) {
+    return { success: false, message: err.message };
+  }
+};
+
+export const getMyReservations = async (status) => {
+  try {
+    const res = await api.getMyReservations(status);
+    return res.data || [];
+  } catch {
+    return [];
+  }
 };
